@@ -102,7 +102,6 @@ class RGTransformer(nn.Module):
 
 
 
-
 if __name__ == '__main__':
     matrix = []
     for i in range(len(embedding)):
