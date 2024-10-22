@@ -3,14 +3,13 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 embedding = torch.load('./combined_concatenated_game_embeddings.pt', weights_only=False)
-print()
 
 
 class RelationMultiHeadAttention(nn.Module):
-    def __init__(self, embed_dim=2304, num_heads=8, dropout=0.1):
+    def __init__(self, total_games, embed_dim=2304, num_heads=8, dropout=0.1):
         super().__init__()
 
-        print("embed" , embed_dim)
+
         assert embed_dim % num_heads == 0, "embed_dim must be divisible by num_heads"
 
         self.embed_dim = embed_dim
@@ -23,9 +22,9 @@ class RelationMultiHeadAttention(nn.Module):
         self.k_proj = nn.Linear(embed_dim, embed_dim)
         self.v_proj = nn.Linear(embed_dim, embed_dim)
 
-        #self.relation_bias = nn.Parameter(
-        #    torch.zeros(num_heads, num_games, num_games)
-        #)
+        self.relation_bias = nn.Parameter(
+           torch.zeros(total_games,num_heads,1,1)
+        )
 
         # Output projection
         self.out_proj = nn.Linear(embed_dim, embed_dim)
@@ -47,10 +46,20 @@ class RelationMultiHeadAttention(nn.Module):
         k = k.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
         v = v.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
 
+
         #B is a bias matri
+        B = self.relation_bias
+
+
+
+
+        #print("k",k.shape)
+        #print("B",B.shape)
 
         # Scaled dot-product attention
-        attn_weights = torch.matmul(q, k.transpose(-2, -1)) * self.scaling
+        A1 = torch.matmul(q, k.transpose(-2, -1)) * self.scaling
+        attn_weights = torch.add(A1, B)
+
 
         if mask is not None:
             attn_weights = attn_weights.masked_fill(mask == 0, float('-inf'))
@@ -63,16 +72,17 @@ class RelationMultiHeadAttention(nn.Module):
 
         # Reshape and apply output projection
         attn_output = attn_output.transpose(1, 2).contiguous().view(
-            batch_size, -1, self.embed_dim
+            batch_size, self.embed_dim
         )
+
 
         output = self.out_proj(attn_output)
 
-        return output, attn_weights
+        return output
 
 
 class RGTransformer(nn.Module):
-    def __init__(self, shape1, dropout=0.1):
+    def __init__(self, game_total, shape1, dropout=0.1):
         #making a linear norm palayer
         super().__init__()
         self.embed = shape1
@@ -81,40 +91,46 @@ class RGTransformer(nn.Module):
 
 
         self.layer_norm = nn.LayerNorm([self.embed])
-        self.MultiHeadAttention = RelationMultiHeadAttention(self.embed, 8)
+        self.MultiHeadAttention = RelationMultiHeadAttention(game_total, self.embed, 8)
         self.MLPGate = nn.Sequential(
             nn.Linear(self.embed, self.embed),
             nn.Softmax(),
 
         )
-        self.MLP = nn.Linear(self.embed, self.embed)
+        self.MLP = nn.Sequential(
+            nn.Linear(self.embed, self.embed),
+            nn.ReLU(),
+
+        )
     def forward(self, Matrix):
-        print(Matrix.shape)
+
         ln = self.layer_norm(Matrix)
         rmha = self.MultiHeadAttention(ln, ln, ln)
-        gate0 = self.MLPGate(rmha) #this is a gate
-        gate1 = np.dot(gate0, rmha) + Matrix
+        gate0 = self.MLPGate(Matrix) #this is a gate
 
-        final = np.dot(gate1, self.layer_norm(self.MLP(gate1))) + gate1
+        gate1 = torch.mul(gate0, rmha) + Matrix
 
+
+        final = torch.mul(gate1, self.layer_norm(self.MLP(gate1))) + gate1
+        print("final shape" , final.shape)
         return final
 
 
 
 
 if __name__ == '__main__':
+
     matrix = []
     for i in range(len(embedding)):
         matrix.append(embedding[i][1])
 
     matrix = np.array(matrix)
     game_total , embed = matrix.shape
-    print(matrix.shape)
-    print(embed)
-    rgt = RGTransformer(embed)
+
+    rgt = RGTransformer(game_total , embed)
 
     tensor_data = torch.from_numpy(matrix).float()
-    print(1)
+
     print(rgt(tensor_data))
 
 
