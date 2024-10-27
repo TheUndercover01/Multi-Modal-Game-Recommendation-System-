@@ -7,16 +7,19 @@ embedding = torch.load('./combined_concatenated_game_embeddings.pt', weights_onl
 
 
 class RGTransformer(nn.Module):
-    def __init__(self, game_total, shape1, dropout=0.1):
+    def __init__(self,dimension, dropout=0.1):
         #making a linear norm palayer
         super().__init__()
-        self.embed = shape1
+        self.embed = dimension[2]
+        total_games = dimension[0]
+        batch_size = dimension[1]
+
 
         #print(self.embed , self.shape0)
 
 
-        self.layer_norm = nn.LayerNorm([self.embed])
-        self.MultiHeadAttention = MultiHeadAttention(game_total, self.embed, 8 , relation_bias=True)
+        self.layer_norm = nn.LayerNorm(self.embed)
+        self.MultiHeadAttention = MultiHeadAttention(dimension, num_heads = 8 , game_indices=[0]*batch_size , relation_bias=True)
         self.MLPGate = nn.Sequential(
             nn.Linear(self.embed, self.embed),
             nn.Sigmoid(),
@@ -37,7 +40,7 @@ class RGTransformer(nn.Module):
 
 
         final = torch.mul(gate1, self.layer_norm(self.MLP(gate1))) + gate1
-        print("final shape" , final.shape)
+
         return final
 
 
@@ -50,9 +53,13 @@ if __name__ == '__main__':
         matrix.append(embedding[i][1])
 
     matrix = np.array(matrix)
-    game_total , embed = matrix.shape
+    print(matrix.shape)
+    user_total , game_total , embed = matrix.shape
 
-    rgt = RGTransformer(game_total , embed)
+
+
+
+    rgt = RGTransformer(user_total , game_total , embed)
 
     tensor_data = torch.from_numpy(matrix).float()
 

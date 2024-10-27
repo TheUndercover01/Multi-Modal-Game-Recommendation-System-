@@ -2,27 +2,34 @@ import torch
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
+
+
 class MultiHeadAttention(nn.Module):
-    def __init__(self, total_games, embed_dim=2304, num_heads=8, dropout=0.1 , relation_bias = False):
+    def __init__(self, dimensions,  game_indices = None , num_heads=8, dropout=0.1, relation_bias=False):
         super().__init__()
 
-
+        embed_dim = dimensions[2]
         assert embed_dim % num_heads == 0, "embed_dim must be divisible by num_heads"
 
-        self.embed_dim = embed_dim
+        self.embed_dim = dimensions[2]
         self.num_heads = num_heads
         self.head_dim = embed_dim // num_heads
         self.scaling = self.head_dim ** -0.5
         self.relation_bias = relation_bias
+        self.total_games = dimensions[1]
+        self.game_indices = game_indices
+        self.batch_size = dimensions[0]
+
 
         # Linear layers for Q, K, V projections
         self.q_proj = nn.Linear(embed_dim, embed_dim)
         self.k_proj = nn.Linear(embed_dim, embed_dim)
         self.v_proj = nn.Linear(embed_dim, embed_dim)
-        print(self.relation_bias)
+
         if self.relation_bias:
+            # Changed to handle batching - will be expanded in forward pass
             self.bias = nn.Parameter(
-                torch.zeros(total_games, num_heads, 1, 1)
+                torch.zeros(self.batch_size, num_heads, self.total_games, self.total_games)
             )
 
         # Output projection
@@ -34,8 +41,11 @@ class MultiHeadAttention(nn.Module):
     def forward(self, query, key, value, mask=None):
         batch_size = query.size(0)
 
+        seq_len = query.size(1) if len(query.size()) > 2 else 1
+
+
+
         # Linear projections and reshape for multi-head attention
-        # Shape: (batch_size, seq_len, embed_dim)
         q = self.q_proj(query)
         k = self.k_proj(key)
         v = self.v_proj(value)
@@ -45,23 +55,32 @@ class MultiHeadAttention(nn.Module):
         k = k.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
         v = v.view(batch_size, -1, self.num_heads, self.head_dim).transpose(1, 2)
 
+
+
         if self.relation_bias:
-            B = self.bias
+
+
+            # Index the bias using game_indices and expand to match attention dimensions
+            # game_indices shape: (batch_size,)
+            B = self.bias  # Shape: (batch_size, num_heads, 1, 1)
+
+            #print("selected bias shape" , selected_bias.shape)
+
+            # Expand bias to match attention shape
+
+
+
+
+            # Calculate attention scores with bias
+
             A1 = torch.matmul(q, k.transpose(-2, -1)) * self.scaling
+
+
+
+
             attn_weights = torch.add(A1, B)
         else:
             attn_weights = torch.matmul(q, k.transpose(-2, -1)) * self.scaling
-
-
-
-
-        #print("k",k.shape)
-        #print("B",B.shape)
-
-        # Scaled dot-product attention
-        # attn_weights = torch.matmul(q, k.transpose(-2, -1)) * self.scaling
-
-
 
         if mask is not None:
             attn_weights = attn_weights.masked_fill(mask == 0, float('-inf'))
@@ -74,9 +93,8 @@ class MultiHeadAttention(nn.Module):
 
         # Reshape and apply output projection
         attn_output = attn_output.transpose(1, 2).contiguous().view(
-            batch_size, self.embed_dim
-        )
-
+            batch_size, -1, self.embed_dim
+        ).squeeze(1)
 
         output = self.out_proj(attn_output)
 
@@ -102,5 +120,5 @@ class RTransformer(nn.Module):
         gate0 = self.MLPGate(rmha) #this is a gate
 
         final = self.layer_norm(gate0)
-        print("final shape" , final.shape)
+
         return final
