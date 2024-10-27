@@ -111,6 +111,8 @@ game_history = torch.load('user_game_embeddings.pt', weights_only=False)
 
 
 
+
+
 #print(game_history['doctr'])
 embeddings = create_user_embeddings(game_history)
 his_embeddings = torch.tensor(embeddings , dtype=torch.float32)
@@ -122,14 +124,15 @@ his_embeddings_shape = his_embeddings.shape
 
 employee_dim = employee_embeddings.shape[1]  # Assuming the third dimension is the embedding dimension
 
-
+print(his_embeddings.max() , his_embeddings.min() , his_embeddings.shape)
 
 
 generator = Generator(his_embeddings_shape, k, employee_dim, total_dim_out = his_embeddings_shape[2])
 
 game_generated = generator(employee_embeddings, his_embeddings, gen_games)
 
+print(game_generated.max() , game_generated.min() , game_generated.shape)
+#torch.save(game_generated, 'generated_games.pt')
 print(game_generated)
-torch.save(game_generated, 'generated_games.pt')
-print(game_generated.shape)
+
 #print(embeddings.shape)

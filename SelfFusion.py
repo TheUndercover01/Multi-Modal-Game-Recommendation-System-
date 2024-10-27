@@ -74,7 +74,7 @@ class ConcatClassify(nn.Module):
                 nn.ReLU(),
                 nn.Dropout(dropout),
                 nn.Linear(1024, total_games_out),
-                nn.Softmax()
+                nn.ReLU()
             )
         else:
             self.linear = nn.Sequential(
