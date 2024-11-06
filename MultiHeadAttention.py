@@ -102,12 +102,13 @@ class MultiHeadAttention(nn.Module):
 
 
 class RTransformer(nn.Module):
-    def __init__(self, total_games, embed_dim=2304, num_heads=8, dropout=0.1):
+    def __init__(self, dimensions,game_indices = None, num_heads=8, dropout=0.1):
 
         super().__init__()
-        self.embed = embed_dim
+        self.embed = dimensions[2]
+        self.batch_size = dimensions[0]
         self.layer_norm = nn.LayerNorm([self.embed])
-        self.MultiHeadAttention = MultiHeadAttention(total_games, self.embed, 8, relation_bias=True)
+        self.MultiHeadAttention = MultiHeadAttention(dimensions, num_heads = num_heads , game_indices=[0]*self.batch_size , relation_bias=True)
         self.MLPGate = nn.Sequential(
             nn.Linear(self.embed, self.embed),
             nn.Sigmoid(),

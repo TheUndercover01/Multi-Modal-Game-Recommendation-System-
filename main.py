@@ -5,6 +5,7 @@ import numpy as np
 
 import pandas as pd
 from Generator import Generator
+from Discriminator import Discriminator
 import torch.nn as nn
 
 
@@ -54,6 +55,7 @@ def create_user_embeddings(user_data):
                 game['title_embedding'],
                 game['about_embedding']
             ])
+            print(game['game_title'])
             user_embeddings.append(game_concat)
 
         # Pad with -1 arrays if needed
@@ -109,7 +111,7 @@ print("slidfnhvcsldjnwoef" , employee_embeddings.shape)
 
 game_history = torch.load('user_game_embeddings.pt', weights_only=False)
 
-
+#print(game_history)
 
 
 
@@ -129,10 +131,21 @@ print(his_embeddings.max() , his_embeddings.min() , his_embeddings.shape)
 
 generator = Generator(his_embeddings_shape, k, employee_dim, total_dim_out = his_embeddings_shape[2])
 
+discriminator = Discriminator(his_embeddings_shape, k, employee_dim)
+
 game_generated = generator(employee_embeddings, his_embeddings, gen_games)
+
+historical_gen = torch.cat((his_embeddings , gen_games) ,  1 )
+#print(historical_gen.shape)
+
+score = discriminator(employee_embeddings , historical_gen)
+
+print('score' , score)
 
 print(game_generated.max() , game_generated.min() , game_generated.shape)
 #torch.save(game_generated, 'generated_games.pt')
+
 print(game_generated)
+#
 
 #print(embeddings.shape)
