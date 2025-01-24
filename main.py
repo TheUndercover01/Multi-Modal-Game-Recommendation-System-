@@ -55,7 +55,7 @@ def create_user_embeddings(user_data):
                 game['title_embedding'],
                 game['about_embedding']
             ])
-            print(game['game_title'])
+            # print(game['game_title'])
             user_embeddings.append(game_concat)
 
         # Pad with -1 arrays if needed
@@ -93,21 +93,21 @@ def create_padding_tensor(batch_size=1):
     padding_games = torch.tensor(padding_tensor, dtype=torch.float32)
     return padding_games
 
-print([0]*10)
+# print([0]*10)
 # Example usage:
 gen_games = create_padding_tensor(batch_size = 4)
 
 # Verify the shape and values
 #print("Shape:", gen_games.shape)
 #print("Sample value check:", gen_games)
-
+print(gen_games.shape)
 data = pd.read_csv('user_tag.csv')
     #get the employee embeddings
 employee_embeddings = data.iloc[:, 1:].values
 
 employee_embeddings = employee_embeddings.astype(np.float32)
 employee_embeddings = torch.tensor(employee_embeddings , dtype=torch.float32)
-print("slidfnhvcsldjnwoef" , employee_embeddings.shape)
+# print("slidfnhvcsldjnwoef" , employee_embeddings.shape)
 
 game_history = torch.load('user_game_embeddings.pt', weights_only=False)
 
@@ -117,16 +117,17 @@ game_history = torch.load('user_game_embeddings.pt', weights_only=False)
 
 #print(game_history['doctr'])
 embeddings = create_user_embeddings(game_history)
+
 his_embeddings = torch.tensor(embeddings , dtype=torch.float32)
 
-print(type(his_embeddings))
+print("his", his_embeddings.shape)
 
 k = 10
 his_embeddings_shape = his_embeddings.shape
 
 employee_dim = employee_embeddings.shape[1]  # Assuming the third dimension is the embedding dimension
-
-print(his_embeddings.max() , his_embeddings.min() , his_embeddings.shape)
+print(employee_embeddings.shape)
+# print(his_embeddings.max() , his_embeddings.min() , his_embeddings.shape)
 
 
 generator = Generator(his_embeddings_shape, k, employee_dim, total_dim_out = his_embeddings_shape[2])
@@ -136,16 +137,13 @@ discriminator = Discriminator(his_embeddings_shape, k, employee_dim)
 game_generated = generator(employee_embeddings, his_embeddings, gen_games)
 
 historical_gen = torch.cat((his_embeddings , gen_games) ,  1 )
-#print(historical_gen.shape)
+print(historical_gen.shape)
 
 score = discriminator(employee_embeddings , historical_gen)
 
 print('score' , score)
 
-print(game_generated.max() , game_generated.min() , game_generated.shape)
-#torch.save(game_generated, 'generated_games.pt')
-
-print(game_generated)
+# print(game_generated.max() , game_generated.min() , game_generated.shape)
+# #torch.save(game_generated, 'generated_games.pt')
 #
-
-#print(embeddings.shape)
+print('game generated' , game_generated)

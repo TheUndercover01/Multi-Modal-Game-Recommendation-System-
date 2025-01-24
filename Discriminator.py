@@ -21,6 +21,7 @@ class Discriminator(nn.Module):
         self.total_games_his = his_dimensions[1]
         self.total_games = self.total_games_his + k
         self.k = k
+        print(his_dimensions, "hello##################")
         self.batch_size = his_dimensions[0]
 
         self.SF = SelfFusion((self.batch_size , self.total_games , self.embed_dim))
@@ -33,6 +34,7 @@ class Discriminator(nn.Module):
         #generated is the generated game embeddings of shape (k, embed_dim)
 
         rt = self.RT(historical_gen)
+        print(rt.shape,"rt###########")
         self_fusion_embedding = self.SF(rt)
         out = self.CC(employee, self_fusion_embedding)
         return out

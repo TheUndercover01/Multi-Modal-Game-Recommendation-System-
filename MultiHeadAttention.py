@@ -108,7 +108,7 @@ class RTransformer(nn.Module):
         self.embed = dimensions[2]
         self.batch_size = dimensions[0]
         self.layer_norm = nn.LayerNorm([self.embed])
-        self.MultiHeadAttention = MultiHeadAttention(dimensions, num_heads = num_heads , game_indices=[0]*self.batch_size , relation_bias=True)
+        self.MultiHeadAttention = MultiHeadAttention(dimensions, num_heads = num_heads , game_indices=[0]*self.batch_size , relation_bias=False)
         self.MLPGate = nn.Sequential(
             nn.Linear(self.embed, self.embed),
             nn.Sigmoid(),
@@ -121,5 +121,7 @@ class RTransformer(nn.Module):
         gate0 = self.MLPGate(rmha) #this is a gate
 
         final = self.layer_norm(gate0)
+
+        print(ln.shape,"ln" , rmha.shape,"rmha" , gate0.shape,"gate0" , final.shape,"final")
 
         return final

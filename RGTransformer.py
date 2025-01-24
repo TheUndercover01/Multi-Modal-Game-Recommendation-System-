@@ -19,7 +19,7 @@ class RGTransformer(nn.Module):
 
 
         self.layer_norm = nn.LayerNorm(self.embed)
-        self.MultiHeadAttention = MultiHeadAttention(dimension, num_heads = 8 , game_indices=[0]*batch_size , relation_bias=True)
+        self.MultiHeadAttention = MultiHeadAttention(dimension, num_heads = 8 , game_indices=[0]*batch_size , relation_bias=False)
         self.MLPGate = nn.Sequential(
             nn.Linear(self.embed, self.embed),
             nn.Sigmoid(),
@@ -63,7 +63,7 @@ if __name__ == '__main__':
 
     tensor_data = torch.from_numpy(matrix).float()
 
-    print(rgt(tensor_data))
+    #print(rgt(tensor_data))
 
 
 
