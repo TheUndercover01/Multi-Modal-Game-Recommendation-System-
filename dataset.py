@@ -45,9 +45,9 @@ class SequentialGANDataset(Dataset):
 
     def __getitem__(self, idx):
         return {
-            'input1': self.static_features[idx],
-            'input2': self.initial_games[idx],
-            'input3': self.game_embeddings[idx],
+            'static_features': self.static_features[idx],
+            'game_history': self.initial_games[idx],
+            'generated_games': self.game_embeddings[idx],
             'target_games': self.target_games_seq[idx]
         }
 
@@ -107,6 +107,35 @@ def generate_dummy_data(num_samples=50, seq_length=10):
     target_games_seq = np.random.randn(num_samples, seq_length, 410, 2304)
 
     return static_features, initial_games, game_embeddings, target_games_seq
+
+class DictStateDataset(Dataset):
+    def __init__(self, states_dict, actions, actions_log_prob, advantages, returns):
+        self.static_features = states_dict['static_features']
+        self.game_history = states_dict['game_history']
+        self.current_embeddings = states_dict['current_embeddings']
+        self.game_history_generated_games = states_dict['game_history_generated_games']
+        self.step = states_dict['step']
+        self.actions = actions
+        self.actions_log_prob = actions_log_prob
+        self.advantages = advantages
+        self.returns = returns
+
+    def __len__(self):
+        return len(self.actions)
+
+    def __getitem__(self, idx):
+        return (
+            self.static_features[idx],
+            self.game_history[idx],
+            self.current_embeddings[idx],
+            self.game_history_generated_games[idx],
+            self.step[idx],
+            self.actions[idx],
+            self.actions_log_prob[idx],
+            self.advantages[idx],
+            self.returns[idx]
+        )
+
 
 
 # Usage example

@@ -1,9 +1,8 @@
 import torch
 import numpy as np
 import torch.nn as nn
-import torch.nn.functional as F
-from MultiHeadAttention import MultiHeadAttention
-embedding = torch.load('./combined_concatenated_game_embeddings.pt', weights_only=False)
+from .MultiHeadAttention import MultiHeadAttention
+#embedding = torch.load('../../combined_concatenated_game_embeddings.pt', weights_only=False)
 
 
 class RGTransformer(nn.Module):

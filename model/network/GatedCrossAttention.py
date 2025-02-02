@@ -2,7 +2,7 @@ import torch
 import numpy as np
 import torch.nn as nn
 
-from MultiHeadAttention import MultiHeadAttention
+from .MultiHeadAttention import MultiHeadAttention
 class GatedCrossAttention(nn.Module):
     '''gated cross attention
     issue with total games as the total num of games are not the same in his and gen. what is total_game in thsi his+gen or something else we need to change in future
@@ -38,8 +38,8 @@ class GatedCrossAttention(nn.Module):
 
 
 if __name__ == '__main__':
-    gen_em = torch.load('./combined_concatenated_game_embeddings.pt', weights_only=False)
-    his_em = torch.load('./combined_concatenated_game_embeddings.pt', weights_only=False)
+    gen_em = torch.load('../../combined_concatenated_game_embeddings.pt', weights_only=False)
+    his_em = torch.load('../../combined_concatenated_game_embeddings.pt', weights_only=False)
 
     gen = []
     his = []

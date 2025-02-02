@@ -1,9 +1,8 @@
 import torch
 import numpy as np
 import torch.nn as nn
-from torch.nn.parameter import Parameter
 
-from MultiHeadAttention import MultiHeadAttention
+from .MultiHeadAttention import MultiHeadAttention
 
 class SelfFusion(nn.Module):
     def __init__(self , dimensions, dropout=0.1):
@@ -94,7 +93,7 @@ class ConcatClassify(nn.Module):
 
 
 if __name__ == '__main__':
-    gen_em = torch.load('./combined_concatenated_game_embeddings.pt', weights_only=False)
+    gen_em = torch.load('../../combined_concatenated_game_embeddings.pt', weights_only=False)
 
 
     gen = []

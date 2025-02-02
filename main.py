@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 from Generator import Generator
 from Discriminator import Discriminator
-import torch.nn as nn
 
 
 def create_user_embeddings(user_data):

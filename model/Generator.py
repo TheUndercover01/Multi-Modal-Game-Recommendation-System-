@@ -3,11 +3,11 @@ import numpy as np
 
 import pandas as pd
 import torch.nn as nn
-from GatedCrossAttention import GatedCrossAttention
-from SelfFusion import SelfFusion
-from SelfFusion import ConcatClassify
-from RGTransformer import RGTransformer
-from MultiHeadAttention import RTransformer
+from .network.GatedCrossAttention import GatedCrossAttention
+from .network.SelfFusion import SelfFusion
+from .network.SelfFusion import ConcatClassify
+from .network.RGTransformer import RGTransformer
+from .network.MultiHeadAttention import RTransformer
 
 class Generator(nn.Module):
     def __init__(self, his_dimensions, k, employee_dim, total_dim_out,dropout=0.1):

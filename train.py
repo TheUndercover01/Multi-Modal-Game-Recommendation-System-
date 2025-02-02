@@ -1,343 +1,327 @@
 import torch
-import torch.nn as nn
 import numpy as np
 import torch.optim as optim
-from Generator import Generator
-from Discriminator import Discriminator
-from main import create_padding_tensor
-from main import create_user_embeddings
+from utils import create_padding_tensor
+from utils import create_user_embeddings
 import pandas as pd
 from torch.utils.data import Dataset, DataLoader
+from actorcritic import create_agent
 from test import TestDiscriminator
 from tqdm import tqdm
-import wandb
-import matplotlib.pyplot as plt
+import torch.nn.functional as f
+import torch.distributions as distributions
+from forward_pass import forward_pass
+from losses import calculate_losses
+from losses import calculate_surrogate_loss
+from model.Generator import Generator
+from model.Discriminator import Discriminator
+from dataset import create_sequential_dataloader
+from dataset import generate_dummy_data
+from dataset import DictStateDataset
+from utils import compute_action_prob
+from forward_pass import _get_obs, get_state, step_
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 import torch.nn.functional as F
 
 
-class SequentialGANDataset(Dataset):
-    def __init__(self,
-                 static_features,  # (N, 449) initial static features
-                 initial_games,  # (N, 400, 2304) initial game sequence
-                 game_embeddings,  # (N, 10, 2304) initial game embeddings
-                 target_games_seq):  # (N, K, 410, 2304) K target games for each sample
-        """
-        Dataset for sequential GAN training
 
-        Args:
-            static_features: Initial static features (N, 449)
-            initial_games: Initial game sequence (N, 400, 2304)
-            game_embeddings: Initial game embeddings (N, 10, 2304)
-            target_games_seq: Target games sequence used for discriminator training (N, K, 410, 2304)
-        """
-        # Convert inputs to tensors if they're not already
-        self.static_features = torch.FloatTensor(static_features)
-        self.initial_games = torch.FloatTensor(initial_games)
-        self.game_embeddings = torch.FloatTensor(game_embeddings)
-        self.target_games_seq = torch.FloatTensor(target_games_seq)
+def update_policy(
+        agent,
+        states,
+        actions,
+        actions_log_probability_old,
+        advantages,
+        returns,
+        g_optimizer,
+        d_optimizer,
+        ppo_steps,
+        epsilon,
+        entropy_coefficient,
+        ):
+    BATCH_SIZE = 4
+    total_policy_loss = 0
+    total_value_loss = 0
+    actions_log_probability_old = actions_log_probability_old.detach()
+    actions = actions.detach()
 
-        # Verify shapes
-        self.verify_shapes()
+    all_games = torch.load('all_games.pt')
+    K=10
 
-    def verify_shapes(self):
-        N = len(self.static_features)
-        K = self.target_games_seq.shape[1]
+    # Create a dataset that handles dictionary states
 
-        assert self.static_features.shape == (
-        N, 449), f"Static features should be (N, 449), got {self.static_features.shape}"
-        assert self.initial_games.shape == (
-        N, 400, 2304), f"Initial games should be (N, 400, 2304), got {self.initial_games.shape}"
-        assert self.game_embeddings.shape == (
-        N, 10, 2304), f"Game embeddings should be (N, 10, 2304), got {self.game_embeddings.shape}"
-        assert self.target_games_seq.shape[2:] == (
-        410, 2304), f"Target games should have shape (N, K, 410, 2304), got {self.target_games_seq.shape}"
-
-    def __len__(self):
-        return len(self.static_features)
-
-    def __getitem__(self, idx):
-        return {
-            'input1': self.static_features[idx],
-            'input2': self.initial_games[idx],
-            'input3': self.game_embeddings[idx],
-            'target_games': self.target_games_seq[idx]
-        }
-
-
-def create_sequential_dataloader(
-        static_features,
-        initial_games,
-        game_embeddings,
-        target_games_seq,
-        batch_size=32,
-        shuffle=True,
-        num_workers=4
-):
-    """
-    Creates a DataLoader for sequential GAN training.
-
-    Args:
-        static_features: numpy array/tensor (N, 449)
-        initial_games: numpy array/tensor (N, 400, 2304)
-        game_embeddings: numpy array/tensor (N, 10, 2304)
-        target_games_seq: numpy array/tensor (N, K, 410, 2304)
-        batch_size: int, batch size for training
-        shuffle: bool, whether to shuffle the data
-        num_workers: int, number of worker processes
-
-    Returns:
-        DataLoader object
-    """
-    dataset = SequentialGANDataset(
-        static_features,
-        initial_games,
-        game_embeddings,
-        target_games_seq
+    # Create dataset and dataloader
+    training_results_dataset = DictStateDataset(
+        states,
+        actions,
+        actions_log_probability_old,
+        advantages,
+        returns
     )
 
-    return DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=shuffle,
-        num_workers=num_workers,
-        pin_memory=True
+    batch_dataset = DataLoader(
+        training_results_dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=False
     )
 
+    for _ in range(ppo_steps):
 
-# Example usage:
-def generate_dummy_data(num_samples=4, seq_length=10):
-    """
-    Generate dummy data for testing the dataloader
+        print(_, '_')
+        gen_games = create_padding_tensor(batch_size=4)
+        for batch_idx, (static_features, game_history, current_embeddings,
+                        game_history_generated_games, step, actions,
+                        actions_log_probability_old, advantages, returns) in enumerate(batch_dataset):
 
-    Args:
-        num_samples: number of samples to generate
-        seq_length: number of sequential steps (K)
-    """
-    static_features = np.random.randn(num_samples, 449)
-    initial_games = np.random.randn(num_samples, 400, 2304)
-    game_embeddings = np.random.randn(num_samples, 10, 2304)
-    target_games_seq = np.random.randn(num_samples, seq_length, 410, 2304)
+            print(batch_idx,"batch_idx")
+            # Forward pass with all state components
+            for i in range(K):
 
-    return static_features, initial_games, game_embeddings, target_games_seq
+                print(actions.shape, actions_log_probability_old.shape, advantages.shape, returns.shape , 'long')
+
+                action_pred, value_pred, gen_games = agent(
+                     static_features,
+                     game_history,
+                     gen_games,
+                     game_history_generated_games,
+                     i
+                 )
+                #
+
+                action_prob = compute_action_prob(action_pred)
+                #
+                value_pred = value_pred.squeeze(-1)
+                #action_prob = f.softmax(action_pred, dim=-1)
+                probability_distribution_new = distributions.Categorical(action_prob)
+                entropy = probability_distribution_new.entropy()
+                #
+                # # Estimate new log probabilities using old actions
+                #print(actions.shape, probability_distribution_new, 'shapjsijahcwicn', action_prob.shape, action_normalized.shape)
+                #
+                actions_log_probability_new = probability_distribution_new.log_prob(actions[:, i])
+                #
+                surrogate_loss = calculate_surrogate_loss(
+                    actions_log_probability_old,
+                    actions_log_probability_new,
+                    epsilon,
+                    advantages,
+                    i
+                )
+
+                policy_loss, value_loss = calculate_losses(
+                    surrogate_loss,
+                    entropy,
+                    entropy_coefficient,
+                    returns,
+                    value_pred,
+                    i
+                )
+
+                print(policy_loss, value_loss, 'losssssss')
+
+                g_optimizer.zero_grad()
+                policy_loss.backward(retain_graph=True)  # Need retain_graph since we're using gen_games multiple times
+                g_optimizer.step()
+
+                # Value network backward pass
+                d_optimizer.zero_grad()
+                value_loss.backward(retain_graph=True)
+                d_optimizer.step()
+
+                total_policy_loss += policy_loss.item()
+                total_value_loss += value_loss.item()
+
+    return total_policy_loss / ppo_steps, total_value_loss / ppo_steps
+
+# def update_policy(
+#         agent,
+#         states,
+#         actions,
+#         actions_log_probability_old,
+#         advantages,
+#         returns,
+#         optimizer,
+#
+#         ppo_steps,
+#         epsilon,
+#         entropy_coefficient):
+#     BATCH_SIZE = 128
+#     total_policy_loss = 0
+#     total_value_loss = 0
+#     actions_log_probability_old = actions_log_probability_old.detach()
+#     actions = actions.detach()
+#     training_results_dataset = TensorDataset(
+#             states,
+#             actions,
+#             actions_log_probability_old,
+#             advantages,
+#             returns)
+#     batch_dataset = DataLoader(
+#             training_results_dataset,
+#             batch_size=BATCH_SIZE,
+#             shuffle=False)
+#     for _ in range(ppo_steps):
+#         for batch_idx, (states, actions, actions_log_probability_old, advantages, returns) in enumerate(batch_dataset):
+#
+#             # if batch_idx == 0:
+#             #     his_embed_ = states['game_history'].clone()
+#             #     his_embed_ = torch.cat([his_embed_, gen_games], dim=1)
+#             # get new log prob of actions for all input states
+#             action_pred, value_pred, gen_games = agent(states[0],states[1],states[2], states[3], states[4])
+#             value_pred = value_pred.squeeze(-1)
+#             action_prob = f.softmax(action_pred, dim=-1)
+#             probability_distribution_new = distributions.Categorical(
+#                     action_prob)
+#             entropy = probability_distribution_new.entropy()
+#             # estimate new log probabilities using old actions
+#             actions_log_probability_new = probability_distribution_new.log_prob(actions)
+#             surrogate_loss = calculate_surrogate_loss(
+#                     actions_log_probability_old,
+#                     actions_log_probability_new,
+#                     epsilon,
+#                     advantages)
+#             policy_loss, value_loss = calculate_losses(
+#                     surrogate_loss,
+#                     entropy,
+#                     entropy_coefficient,
+#                     returns,
+#                     value_pred)
+#             optimizer.zero_grad()
+#             policy_loss.backward()
+#             value_loss.backward()
+#             optimizer.step()
+#             total_policy_loss += policy_loss.item()
+#             total_value_loss += value_loss.item()
+#     return total_policy_loss / ppo_steps, total_value_loss / ppo_steps
 
 
-# Usage example
+def evaluate(batch_data, agent, fixed_discriminator):
+    agent.eval()
+    episode_reward = 0
+    step = 0
+    done = False
 
-    # Generate dummy data
+    # Initialize embeddings
+    employee_embeddings = batch_data['static_features'].to(device).clone()
+    his_embeddings = batch_data['game_history'].to(device).clone()
+    gen_games = create_padding_tensor(batch_size=4)
 
-def update_input_tensors(new_game, current_input2, current_input3, step):
-    """
-    Update input tensors with newly generated game
+    state = get_state(batch_data)
 
-    Args:
-        new_game: Generated game tensor (batch_size, 2304)
-        current_input2: Current game sequence (batch_size, N, 2304)
-        current_input3: Current game embeddings (batch_size, 10, 2304)
-        step: Current step in sequence (0-based index)
-    """
-    batch_size = new_game.size(0)
+    while not done:
+        with torch.no_grad():
+            if step == 0:
+                his_embed_ = his_embeddings.clone()
+                his_embed_ = torch.cat([his_embed_, gen_games], dim=1)
 
-    # Update input3 by replacing the game at position 'step'
-    updated_input3 = current_input3.clone()
-    updated_input3[:, step] = new_game
+            # Get predictions
+            action_pred, value_pred, gen_games = agent(
+                employee_embeddings,
+                his_embeddings,
+                gen_games,
+                his_embed_,
+                step
+            )
 
-    updated_input2 = current_input2.clone()
-    updated_input2[:, 400+ step] = new_game
+            # Instead of sampling, we take the best action during evaluation
+            action_prob = f.softmax(action_pred, dim=-1)
+            action = torch.argmax(action_prob, dim=-1)
 
-    # Update input2 by appending the new game
-    # updated_input2 = torch.cat([
-    #     current_input2,
-    #     new_game.unsqueeze(1)
-    # ], dim=1)
+            # Get reward from the discriminator
+            reward = step( action.item(), value_pred, fixed_discriminator, employee_embeddings, gen_games)
 
-    return updated_input2, updated_input3
-class PPOMemory:
-    def __init__(self):
-        self.states = []
-        self.actions = []
-        self.probs = []
-        self.vals = []
-        self.rewards = []
-        self.dones = []
+            episode_reward += reward
+            step += 1
 
-    def clear(self):
-        self.states.clear()
-        self.actions.clear()
-        self.probs.clear()
-        self.vals.clear()
-        self.rewards.clear()
-        self.dones.clear()
+            if step >= 9:
+                done = True
 
+            state = _get_obs(
+                employee_embeddings,
+                his_embeddings,
+                gen_games,
+                his_embed_,
+                step
+            )
 
-def compute_gae(rewards, values, dones, gamma=0.99, lambda_=0.95):
-    gae = 0
-    returns = []
-    for step in reversed(range(len(rewards))):
-        next_value = 0 if step == len(rewards) - 1 else values[step + 1]
-        delta = rewards[step] + gamma * next_value * (1 - dones[step]) - values[step]
-        gae = delta + gamma * lambda_ * (1 - dones[step]) * gae
-        returns.insert(0, gae + values[step])
-    return torch.stack(returns)
+    return episode_reward
 
 
-class MetricsTracker:
-    def __init__(self):
-        self.actor_losses = []
-        self.critic_losses = []
-        self.rewards = []
-        self.iteration_summaries = []
-
-    def log(self, actor_loss, critic_loss, rewards):
-        self.actor_losses.append(actor_loss)
-        self.critic_losses.append(critic_loss)
-        self.rewards.append(rewards.mean().item())
-
-    def log_iteration_summary(self, iteration, avg_loss, avg_reward):
-        summary = {
-            'iteration': iteration,
-            'avg_loss': avg_loss,
-            'avg_reward': avg_reward,
-            'actor_loss_avg': sum(self.actor_losses[-100:]) / min(len(self.actor_losses), 100),
-            'critic_loss_avg': sum(self.critic_losses[-100:]) / min(len(self.critic_losses), 100),
-            'reward_avg': sum(self.rewards[-100:]) / min(len(self.rewards), 100)
-        }
-        self.iteration_summaries.append(summary)
-        return summary
-
-    def plot_metrics(self):
-        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5))
-
-        window_size = 100  # For smoothing
-
-        # Plot with moving average for smoother visualization
-        def moving_average(data, window):
-            return [sum(data[max(0, i - window):i]) / min(i, window) for i in range(1, len(data) + 1)]
-
-        ax1.plot(moving_average(self.actor_losses, window_size))
-        ax1.set_title('Actor Loss (Moving Avg)')
-        ax1.set_xlabel('Steps')
-
-        ax2.plot(moving_average(self.critic_losses, window_size))
-        ax2.set_title('Critic Loss (Moving Avg)')
-        ax2.set_xlabel('Steps')
-
-        ax3.plot(moving_average(self.rewards, window_size))
-        ax3.set_title('Average Reward (Moving Avg)')
-        ax3.set_xlabel('Steps')
-
-        plt.tight_layout()
-        return fig
+def run_ppo(generator, trainable_discriminator, fixed_discriminator, data_loader):
+    MAX_EPISODES = 500
+    DISCOUNT_FACTOR = 0.99
+    REWARD_THRESHOLD = 475
+    PRINT_INTERVAL = 10
+    PPO_STEPS = 8
+    N_TRIALS = 100
+    EPSILON = 0.2
+    ENTROPY_COEFFICIENT = 0.01
+    HIDDEN_DIMENSIONS = 64
+    DROPOUT = 0.2
+    LEARNING_RATE = 0.001
+    iterations = 1000
+    train_rewards = []
+    test_rewards = []
+    policy_losses = []
+    value_losses = []
 
 
-def ppo_training_loop(generator, trainable_discriminator, fixed_discriminator,
-                      data_loader, iterations, K, device, clip_epsilon=0.2, c1=1.0, c2=0.01):
-    memory = PPOMemory()
+    #agent = ActorCritic(generator, trainable_discriminator)
+
+    # generator = Generator(his_embeddings_shape, k, employee_dim, total_dim_out=his_embeddings_shape[2]).to(device)
+    # trainable_discriminator = Discriminator(his_embeddings_shape, k, employee_dim).to(device)
+
+    agent = create_agent(generator, trainable_discriminator)
     g_optimizer = optim.Adam(generator.parameters(), lr=0.0002)
     d_optimizer = optim.Adam(trainable_discriminator.parameters(), lr=0.0002)
-    tracker = MetricsTracker()
-
     for iteration in tqdm(range(iterations), desc="Training Progress"):
-        batch_losses = []
-        batch_rewards = []
+        print(iteration)
+
+
 
         for batch_idx, batch_data in enumerate(data_loader):
             batch_size = 4
-            # Create fresh copies of inputs to prevent in-place modifications
-            employee_embeddings = batch_data['input1'].to(device).clone()
-            his_embeddings = batch_data['input2'].to(device).clone()
-            gen_games = create_padding_tensor(batch_size=4)
 
-            # Collect trajectories
-            trajectory_states = []
-            trajectory_actions = []
-            trajectory_log_probs = []
-            trajectory_values = []
-            trajectory_rewards = []
+            # employee_embeddings = batch_data['static_features'].to(device).clone()
+            # his_embeddings = batch_data['game_history'].to(device).clone()
+            # gen_games = create_padding_tensor(batch_size=4)
 
-            for step in range(K):
-                # Generate action probabilities
-                with torch.no_grad():  # Don't track gradients during sampling
-                    action_probs = generator(employee_embeddings, his_embeddings, gen_games)
-                    dist = torch.distributions.Categorical(action_probs)
-                    action = dist.sample()
-                    action_log_prob = dist.log_prob(action)
+        #env = GameRecommendationEnv(data_loader, trainable_discriminator)
+            train_reward, states, actions, actions_log_probability, advantages, returns = forward_pass(batch_data, agent, g_optimizer, d_optimizer, DISCOUNT_FACTOR, fixed_discriminator)
 
-                # Generate new game
-                new_game = generator(employee_embeddings, his_embeddings, gen_games)
+            policy_loss, value_loss = update_policy(
+                agent,
+                states,
+                actions,
+                actions_log_probability,
+                advantages,
+                returns,
+                g_optimizer,
+                d_optimizer,
+                PPO_STEPS,
+                EPSILON,
+                ENTROPY_COEFFICIENT)
+            test_reward = evaluate(batch_data, agent, fixed_discriminator)
+            policy_losses.append(policy_loss)
+            value_losses.append(value_loss)
+            train_rewards.append(train_reward)
+            test_rewards.append(test_reward)
+            mean_train_rewards = np.mean(train_rewards[-N_TRIALS:])
+            mean_test_rewards = np.mean(test_rewards[-N_TRIALS:])
+            mean_abs_policy_loss = np.mean(np.abs(policy_losses[-N_TRIALS:]))
+            mean_abs_value_loss = np.mean(np.abs(value_losses[-N_TRIALS:]))
 
-                # Handle history embedding
-                if step == 0:
-                    his_embed_ = his_embeddings.clone()
-                    his_embed_ = torch.cat([his_embed_, gen_games], dim=1)
 
-                # Update game state - create new tensors instead of in-place updates
-                his_dis, new_gen_games = update_input_tensors(new_game, his_embed_, gen_games, step)
-                gen_games = new_gen_games.clone()  # Use new tensor instead of in-place update
-
-                # Compute value and reward
-                with torch.no_grad():  # Don't track gradients for value estimation during collection
-                    value = trainable_discriminator(employee_embeddings, his_dis)
-                    reward = fixed_discriminator(employee_embeddings, his_dis)
-
-                # Store trajectory information
-                trajectory_states.append(action_probs.detach())  # Detach to prevent gradient tracking
-                trajectory_actions.append(action)
-                trajectory_log_probs.append(action_log_prob)
-                trajectory_values.append(value)
-                trajectory_rewards.append(reward)
-
-            # Convert trajectories to tensors
-            states = torch.stack(trajectory_states)
-            actions = torch.stack(trajectory_actions)
-            old_log_probs = torch.stack(trajectory_log_probs)
-            values = torch.stack(trajectory_values)
-            rewards = torch.stack(trajectory_rewards)
-
-            # Compute returns and advantages
-            returns = compute_gae(rewards, values, torch.zeros_like(rewards))
-            advantages = returns - values.detach()
-
-            # PPO Update
-            for _ in range(1):  # PPO epochs
-                # Generate new predictions
-                new_values = trainable_discriminator(employee_embeddings, his_dis)#states_batch)
-                new_action_probs = generator(employee_embeddings, his_embeddings, gen_games)
-                new_dist = torch.distributions.Categorical(new_action_probs)
-                new_log_probs = new_dist.log_prob(actions)
-
-                # Compute PPO losses
-                print(_, "PPO losses")
-                ratios = torch.exp(new_log_probs - old_log_probs.detach())
-                print(ratios.shape , "rat", advantages.shape)
-
-                surr1 = ratios * advantages.squeeze(-1).detach()  # Detach advantages
-                surr2 = torch.clamp(ratios, 1 - clip_epsilon, 1 + clip_epsilon) * advantages.squeeze(-1).detach()
-
-                actor_loss = torch.min(surr1, surr2).mean()#-
-                critic_loss = F.mse_loss(new_values, returns)
-                entropy_loss = -c2 * new_dist.entropy().mean()
-
-                total_loss = -actor_loss + c1 * critic_loss + entropy_loss
-
-                # Optimization step
-                g_optimizer.zero_grad()
-                d_optimizer.zero_grad()
-                total_loss.backward(retain_graph=True)
-                g_optimizer.step()
-                d_optimizer.step()
-
-                tracker.log(actor_loss.item(), critic_loss.item(), rewards[-1])  # Log final reward
-                batch_losses.append(total_loss.item())
-                batch_rewards.append(rewards[-1].mean().item())
-
-        # Log iteration summary
-        avg_loss = sum(batch_losses) / len(batch_losses)
-        avg_reward = sum(batch_rewards) / len(batch_rewards)
-        summary = tracker.log_iteration_summary(iteration, avg_loss, avg_reward)
-        print(summary)
-
-    return tracker
-
+        if iteration % PRINT_INTERVAL == 0:
+            print(f'Episode: {iteration:3} | \
+                  Mean Train Rewards: {mean_train_rewards:3.1f} \
+                  | Mean Test Rewards: {mean_test_rewards:3.1f} \
+                  | Mean Abs Policy Loss: {mean_abs_policy_loss:2.2f} \
+                  | Mean Abs Value Loss: {mean_abs_value_loss:2.2f}')
+        if mean_test_rewards >= REWARD_THRESHOLD:
+            print(f'Reached reward threshold in {iteration} episodes')
+            break
 
 def main():
     # Device setup
@@ -348,7 +332,10 @@ def main():
     employee_embeddings = torch.tensor(data.iloc[:, 1:].values.astype(np.float32))
 
     game_history = torch.load('user_game_embeddings.pt', weights_only=False)
+    #print(len(game_history['76561197970982479']))
     his_embeddings = torch.tensor(create_user_embeddings(game_history), dtype=torch.float32)
+
+
 
     # Setup parameters
     batch_size = 32
@@ -387,25 +374,21 @@ def main():
     )
 
     # Start training
-    tracker = ppo_training_loop(
+    run_ppo(
         generator,
         trainable_discriminator,
         fixed_discriminator,
         dataloader,
-        iterations,
-        K,
-        device,
-        clip_epsilon=0.2,
-        c1=1.0,
-        c2=0.01
+
+
+
     )
-    fig = tracker.plot_metrics()
-    plt.show()
+    # fig = tracker.plot_metrics()
+    # plt.show()
 
     # Save models
     torch.save(generator.state_dict(), 'generator_ppo.pth')
     torch.save(trainable_discriminator.state_dict(), 'trainable_discriminator_ppo.pth')
-
 
 if __name__ == '__main__':
     main()
