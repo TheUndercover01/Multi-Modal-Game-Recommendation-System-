@@ -65,4 +65,3 @@ The system generates game recommendations in sequences of 10 games, optimizing f
 - Discount factor: 0.99
 ```
 
-Would you like me to add any additional sections or details to the documentation?
