@@ -37,7 +37,7 @@ def main():
     # Initialize models
     generator = Generator(his_embeddings_shape, k, employee_dim, total_dim_out=his_embeddings_shape[2]).to(device)
     trainable_discriminator = Discriminator(his_embeddings_shape, k, employee_dim).to(device)
-    fixed_discriminator = Discriminator(his_embeddings_shape, k, employee_dim).to(device)
+    #fixed_discriminator = Discriminator(his_embeddings_shape, k, employee_dim).to(device)
 
     # Load fixed discriminator weights (assuming pre-trained)
     # fixed_discriminator.load_state_dict(torch.load('fixed_discriminator.pth'))
@@ -48,15 +48,13 @@ def main():
     iterations = 10
     K = 10  # steps per sequence
 
-    static_features, initial_games, game_embeddings, target_games_seq = generate_dummy_data()
+    #static_features, initial_games, game_embeddings, target_games_seq = generate_dummy_data()
     print(1)
 
     # Create dataloader
     dataloader = create_sequential_dataloader(
-        static_features,
-        initial_games,
-        game_embeddings,
-        target_games_seq,
+        employee_embeddings,
+        his_embeddings,
         batch_size=4
     )
 

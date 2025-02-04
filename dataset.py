@@ -7,8 +7,8 @@ class SequentialGANDataset(Dataset):
     def __init__(self,
                  static_features,  # (N, 449) initial static features
                  initial_games,  # (N, 400, 2304) initial game sequence
-                 game_embeddings,  # (N, 10, 2304) initial game embeddings
-                 target_games_seq):  # (N, K, 410, 2304) K target games for each sample
+                 #game_embeddings,  # (N, 10, 2304) initial game embeddings
+                 ):  # (N, K, 410, 2304) K target games for each sample
         """
         Dataset for sequential GAN training
 
@@ -21,24 +21,24 @@ class SequentialGANDataset(Dataset):
         # Convert inputs to tensors if they're not already
         self.static_features = torch.FloatTensor(static_features)
         self.initial_games = torch.FloatTensor(initial_games)
-        self.game_embeddings = torch.FloatTensor(game_embeddings)
-        self.target_games_seq = torch.FloatTensor(target_games_seq)
+        #self.game_embeddings = torch.FloatTensor(game_embeddings)
+        #self.target_games_seq = torch.FloatTensor(target_games_seq)
 
         # Verify shapes
         self.verify_shapes()
 
     def verify_shapes(self):
         N = len(self.static_features)
-        K = self.target_games_seq.shape[1]
+        K = 10
 
         assert self.static_features.shape == (
         N, 449), f"Static features should be (N, 449), got {self.static_features.shape}"
         assert self.initial_games.shape == (
         N, 400, 2304), f"Initial games should be (N, 400, 2304), got {self.initial_games.shape}"
-        assert self.game_embeddings.shape == (
-        N, 10, 2304), f"Game embeddings should be (N, 10, 2304), got {self.game_embeddings.shape}"
-        assert self.target_games_seq.shape[2:] == (
-        410, 2304), f"Target games should have shape (N, K, 410, 2304), got {self.target_games_seq.shape}"
+        #assert self.game_embeddings.shape == (
+        #N, 10, 2304), f"Game embeddings should be (N, 10, 2304), got {self.game_embeddings.shape}"
+        #assert self.target_games_seq.shape[2:] == (
+        #410, 2304), f"Target games should have shape (N, K, 410, 2304), got {self.target_games_seq.shape}"
 
     def __len__(self):
         return len(self.static_features)
@@ -47,17 +47,15 @@ class SequentialGANDataset(Dataset):
         return {
             'static_features': self.static_features[idx],
             'game_history': self.initial_games[idx],
-            'generated_games': self.game_embeddings[idx],
-            'target_games': self.target_games_seq[idx]
+            #'generated_games': self.game_embeddings[idx],
+            #'target_games': self.target_games_seq[idx]
         }
 
 
 def create_sequential_dataloader(
         static_features,
         initial_games,
-        game_embeddings,
-        target_games_seq,
-        batch_size=32,
+        batch_size=4,
         shuffle=True,
         num_workers=4
 ):
@@ -79,8 +77,6 @@ def create_sequential_dataloader(
     dataset = SequentialGANDataset(
         static_features,
         initial_games,
-        game_embeddings,
-        target_games_seq
     )
 
     return DataLoader(
