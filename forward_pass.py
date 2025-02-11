@@ -55,7 +55,7 @@ def _get_obs(employee_embeddings, history_embeddings, gen_games, his_embed_, ste
     # torch.tensor(dict['step'])]
 
     return dict
-def step_(value_pred, fixed_discriminator,  employee_embeddings, gen_games):
+def step_(value_pred, trainable_discriminator, fixed_discriminator,  employee_embeddings, gen_games):
     with torch.no_grad():  # Don't track gradients for value estimation during collection
         #value = trainable_discriminator(employee_embeddings, his_dis)
         reward = fixed_discriminator(employee_embeddings, gen_games)
@@ -69,7 +69,7 @@ def step_(value_pred, fixed_discriminator,  employee_embeddings, gen_games):
 
 
 
-def forward_pass(batch_data, agent, g_optimizer, d_optimizer, discount_factor, fixed_discriminator):
+def forward_pass(batch_data, agent, g_optimizer, d_optimizer, discount_factor, fixed_discriminator, trainable_discriminator):
     # Initialize lists for each component of the state
     states_static = []
     states_history = []
@@ -122,7 +122,7 @@ def forward_pass(batch_data, agent, g_optimizer, d_optimizer, discount_factor, f
         print(action, 'action')
         log_prob_action = dist.log_prob(action)
         print(log_prob_action, 'log_prob_action')
-        reward = step_(value_pred, fixed_discriminator, employee_embeddings, gen_games)
+        reward = step_(value_pred, trainable_discriminator, fixed_discriminator, employee_embeddings, gen_games)
         print(reward, 'reward')
         #state = _get_obs(employee_embeddings, his_embeddings, gen_games, his_embed_, step)
 

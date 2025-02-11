@@ -75,6 +75,8 @@ def update_policy(
                         actions_log_probability_old, advantages, returns) in enumerate(batch_dataset):
 
             print(batch_idx,"batch_idx")
+            policy_loss_all = []
+            value_loss_all = []
             # Forward pass with all state components
             for i in range(K):
 
@@ -118,7 +120,7 @@ def update_policy(
                     i
                 )
 
-                print(policy_loss, value_loss, 'losssssss')
+                #print(policy_loss, value_loss, 'losssssss')
 
                 g_optimizer.zero_grad()
                 policy_loss.backward(retain_graph=True)  # Need retain_graph since we're using gen_games multiple times
@@ -196,7 +198,7 @@ def update_policy(
 #     return total_policy_loss / ppo_steps, total_value_loss / ppo_steps
 
 
-def evaluate(batch_data, agent, fixed_discriminator):
+def evaluate(batch_data, agent, fixed_discriminator, trainable_discriminator):
     agent.eval()
     episode_reward = 0
     step = 0
@@ -207,13 +209,16 @@ def evaluate(batch_data, agent, fixed_discriminator):
     his_embeddings = batch_data['game_history'].to(device).clone()
     gen_games = create_padding_tensor(batch_size=4)
 
-    state = get_state(batch_data)
+    #state = get_state(batch_data)
 
     while not done:
         with torch.no_grad():
             if step == 0:
                 his_embed_ = his_embeddings.clone()
                 his_embed_ = torch.cat([his_embed_, gen_games], dim=1)
+                state = get_state(batch_data, his_embed_, step)
+            else:
+                state = _get_obs(employee_embeddings, his_embeddings, gen_games, his_embed_, step)
 
             # Get predictions
             action_pred, value_pred, gen_games = agent(
@@ -229,7 +234,7 @@ def evaluate(batch_data, agent, fixed_discriminator):
             action = torch.argmax(action_prob, dim=-1)
 
             # Get reward from the discriminator
-            reward = step( action.item(), value_pred, fixed_discriminator, employee_embeddings, gen_games)
+            reward = step_( value_pred, trainable_discriminator, fixed_discriminator, employee_embeddings, gen_games)
 
             episode_reward += reward
             step += 1
@@ -253,7 +258,7 @@ def run_ppo(generator, trainable_discriminator, fixed_discriminator, data_loader
     DISCOUNT_FACTOR = 0.99
     REWARD_THRESHOLD = 475
     PRINT_INTERVAL = 10
-    PPO_STEPS = 8
+    PPO_STEPS = 5
     N_TRIALS = 100
     EPSILON = 0.2
     ENTROPY_COEFFICIENT = 0.01
@@ -302,11 +307,12 @@ def run_ppo(generator, trainable_discriminator, fixed_discriminator, data_loader
                 PPO_STEPS,
                 EPSILON,
                 ENTROPY_COEFFICIENT)
-            test_reward = evaluate(batch_data, agent, fixed_discriminator)
+            test_reward = evaluate(batch_data, agent, fixed_discriminator, trainable_discriminator)
+            print(test_reward, 'testytftrd')
             policy_losses.append(policy_loss)
             value_losses.append(value_loss)
-            train_rewards.append(train_reward)
-            test_rewards.append(test_reward)
+            train_rewards.append(train_reward.detach().numpy())
+            test_rewards.append(test_reward.detach().numpy())
             mean_train_rewards = np.mean(train_rewards[-N_TRIALS:])
             mean_test_rewards = np.mean(test_rewards[-N_TRIALS:])
             mean_abs_policy_loss = np.mean(np.abs(policy_losses[-N_TRIALS:]))
