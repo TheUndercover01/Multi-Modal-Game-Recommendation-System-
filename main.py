@@ -1,5 +1,5 @@
 import torch
-from utils import create_user_embeddings
+from utils import create_user_embeddings,create_user_embeddings_1
 from model.Generator import Generator
 from model.Discriminator import Discriminator
 from torch.utils.data import DataLoader
@@ -20,7 +20,7 @@ def main():
 
     game_history = torch.load('user_game_embeddings.pt', weights_only=False)
     #print(len(game_history['76561197970982479']))
-    his_embeddings = torch.tensor(create_user_embeddings(game_history), dtype=torch.float32)
+    his_embeddings = torch.tensor(create_user_embeddings_1(game_history), dtype=torch.float32)
 
 
 
@@ -40,9 +40,10 @@ def main():
     #fixed_discriminator = Discriminator(his_embeddings_shape, k, employee_dim).to(device)
 
     # Load fixed discriminator weights (assuming pre-trained)
-    # fixed_discriminator.load_state_dict(torch.load('fixed_discriminator.pth'))
-    # fixed_discriminator.eval()
-    fixed_discriminator = TestDiscriminator(his_embeddings_shape, k, employee_dim).to(device)
+    fixed_discriminator= torch.load("model.pth")
+
+    fixed_discriminator.eval()
+    # fixed_discriminator = TestDiscriminator(his_embeddings_shape, k, employee_dim).to(device)
 
     # Training parameters
     iterations = 10
@@ -74,6 +75,6 @@ def main():
     # Save models
     torch.save(generator.state_dict(), 'generator_ppo.pth')
     torch.save(trainable_discriminator.state_dict(), 'trainable_discriminator_ppo.pth')
-
+    print("Finished")
 if __name__ == '__main__':
     main()
