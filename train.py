@@ -113,7 +113,7 @@ def update_policy(
                 policy_loss_accum += policy_loss.item()
                 value_loss_accum += value_loss.item()
 
-            # After K iterations, backpropagate the averaged loss
+            # After K iteration, backpropagate the averaged loss
             g_optimizer.zero_grad()
             policy_loss = torch.tensor(policy_loss_accum / K, requires_grad=True)
             policy_loss.backward(retain_graph=True)
