@@ -26,7 +26,6 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 import torch.nn.functional as F
 
 
-
 def update_policy(
         agent,
         states,
@@ -39,7 +38,7 @@ def update_policy(
         ppo_steps,
         epsilon,
         entropy_coefficient,
-        ):
+):
     BATCH_SIZE = 4
     total_policy_loss = 0
     total_value_loss = 0
@@ -47,9 +46,7 @@ def update_policy(
     actions = actions.detach()
 
     all_games = torch.load('all_games.pt')
-    K=10
-
-    # Create a dataset that handles dictionary states
+    K = 10
 
     # Create dataset and dataloader
     training_results_dataset = DictStateDataset(
@@ -67,42 +64,34 @@ def update_policy(
     )
 
     for _ in range(ppo_steps):
-
-        print(_, '_')
         gen_games = create_padding_tensor(batch_size=4)
+
         for batch_idx, (static_features, game_history, current_embeddings,
                         game_history_generated_games, step, actions,
                         actions_log_probability_old, advantages, returns) in enumerate(batch_dataset):
 
-            print(batch_idx,"batch_idx")
-            policy_loss_all = []
-            value_loss_all = []
-            # Forward pass with all state components
+            # Accumulate gradients for K iterations
+            policy_loss_accum = 0
+            value_loss_accum = 0
+
             for i in range(K):
-
-                print(actions.shape, actions_log_probability_old.shape, advantages.shape, returns.shape , 'long')
-
+                # Forward pass with all state components
                 action_pred, value_pred, gen_games = agent(
-                     static_features,
-                     game_history,
-                     gen_games,
-                     game_history_generated_games,
-                     i
-                 )
-                #
+                    static_features,
+                    game_history,
+                    gen_games,
+                    game_history_generated_games,
+                    i
+                )
 
                 action_prob = compute_action_prob(action_pred)
-                #
                 value_pred = value_pred.squeeze(-1)
-                #action_prob = f.softmax(action_pred, dim=-1)
+
                 probability_distribution_new = distributions.Categorical(action_prob)
                 entropy = probability_distribution_new.entropy()
-                #
-                # # Estimate new log probabilities using old actions
-                #print(actions.shape, probability_distribution_new, 'shapjsijahcwicn', action_prob.shape, action_normalized.shape)
-                #
+
                 actions_log_probability_new = probability_distribution_new.log_prob(actions[:, i])
-                #
+
                 surrogate_loss = calculate_surrogate_loss(
                     actions_log_probability_old,
                     actions_log_probability_new,
@@ -120,19 +109,23 @@ def update_policy(
                     i
                 )
 
-                #print(policy_loss, value_loss, 'losssssss')
+                # Accumulate losses without backpropagation
+                policy_loss_accum += policy_loss.item()
+                value_loss_accum += value_loss.item()
 
-                g_optimizer.zero_grad()
-                policy_loss.backward(retain_graph=True)  # Need retain_graph since we're using gen_games multiple times
-                g_optimizer.step()
+            # After K iterations, backpropagate the averaged loss
+            g_optimizer.zero_grad()
+            policy_loss = torch.tensor(policy_loss_accum / K, requires_grad=True)
+            policy_loss.backward(retain_graph=True)
+            g_optimizer.step()
 
-                # Value network backward pass
-                d_optimizer.zero_grad()
-                value_loss.backward(retain_graph=True)
-                d_optimizer.step()
+            d_optimizer.zero_grad()
+            value_loss = torch.tensor(value_loss_accum / K, requires_grad=True)
+            value_loss.backward(retain_graph=True)
+            d_optimizer.step()
 
-                total_policy_loss += policy_loss.item()
-                total_value_loss += value_loss.item()
+            total_policy_loss += policy_loss.item()
+            total_value_loss += value_loss.item()
 
     return total_policy_loss / ppo_steps, total_value_loss / ppo_steps
 
